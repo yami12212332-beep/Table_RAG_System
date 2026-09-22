@@ -3,8 +3,8 @@ Retrieval & querying layer.
 Fetches the most relevant table chunks, then asks the LLM to answer using
 only those chunks — with source attribution so answers stay traceable.
 """
-from app.embed_store import query
-from app.standardize import LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
+from embed_store import query
+from standardize import LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
 import requests
 
 

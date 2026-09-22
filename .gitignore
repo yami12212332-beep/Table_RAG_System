@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Environment variables
+.env
+
+
+# IDE
+.vscode/
+.idea/
+
+#DB files
+chroma_store

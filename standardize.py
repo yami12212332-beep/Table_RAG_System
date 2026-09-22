@@ -11,12 +11,13 @@ their own, so this split noticeably improves retrieval quality.
 import os
 import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
-from app.extract import ExtractedTable
+from extract import ExtractedTable
 
-# Point this at whatever OpenAI-compatible chat endpoint you have access to.
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
-LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+# Groq's chat completions endpoint is OpenAI-compatible.
+# See https://console.groq.com/docs/models for available model names.
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
+LLM_API_KEY = os.getenv("LLM_API_KEY", os.getenv("GROQ_API_KEY", ""))
+LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 
 
 def _forward_fill_headers(headers: list) -> list:
@@ -45,8 +46,8 @@ def to_markdown(table: ExtractedTable) -> str:
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
 def summarize_table(markdown: str, context_hint: str = "") -> str:
     """
-    Calls a chat completion endpoint to produce a 2-4 sentence natural-language
-    summary of the table, used as the embedded text.
+    Calls Groq's chat completion endpoint to produce a 2-4 sentence
+    natural-language summary of the table, used as the embedded text.
     """
     if not LLM_API_KEY:
         # Offline fallback so the pipeline still runs without an API key configured.

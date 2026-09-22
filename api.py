@@ -15,10 +15,10 @@ from pathlib import Path
 from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 
-from app.extract import extract
-from app.standardize import standardize
-from app.embed_store import store_table
-from app.retrieve import answer_question
+from extract import extract
+from standardize import standardize
+from embed_store import store_table
+from retrieve import answer_question
 
 app = FastAPI(title="Table RAG")
 
