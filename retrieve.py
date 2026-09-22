@@ -4,8 +4,7 @@ Fetches the most relevant table chunks, then asks the LLM to answer using
 only those chunks — with source attribution so answers stay traceable.
 """
 from embed_store import query
-from standardize import LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
-import requests
+from standardize import _client, LLM_MODEL
 
 
 SYSTEM_PROMPT = (
@@ -25,27 +24,21 @@ def answer_question(question: str, top_k: int = 4) -> dict:
         f"Source: {h['source_file']} ({h['location']})\n{h['markdown']}" for h in hits
     )
 
-    if not LLM_API_KEY:
+    if _client is None:
         return {
             "answer": "[No LLM configured — showing raw retrieved tables instead]\n\n" + context,
             "sources": [{"source_file": h["source_file"], "location": h["location"]} for h in hits],
         }
-
-    resp = requests.post(
-        f"{LLM_BASE_URL}/chat/completions",
-        headers={"Authorization": f"Bearer {LLM_API_KEY}"},
-        json={
-            "model": LLM_MODEL,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": f"Question: {question}\n\nTables:\n{context}"},
-            ],
-            "temperature": 0,
-        },
-        timeout=30,
+    print(context)
+    completion = _client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"Question: {question}\n\nTables:\n{context}"},
+        ],
+        temperature=0,
     )
-    resp.raise_for_status()
-    answer = resp.json()["choices"][0]["message"]["content"].strip()
+    answer = completion.choices[0].message.content.strip()
     return {
         "answer": answer,
         "sources": [{"source_file": h["source_file"], "location": h["location"]} for h in hits],

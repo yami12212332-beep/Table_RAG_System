@@ -9,15 +9,21 @@ MARKDOWN as retrievable payload/metadata. Raw table cells embed poorly on
 their own, so this split noticeably improves retrieval quality.
 """
 import os
-import requests
+from dotenv import load_dotenv
+from groq import Groq, GroqError
 from tenacity import retry, stop_after_attempt, wait_exponential
 from extract import ExtractedTable
 
-# Groq's chat completions endpoint is OpenAI-compatible.
-# See https://console.groq.com/docs/models for available model names.
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
-LLM_API_KEY = os.getenv("LLM_API_KEY", os.getenv("GROQ_API_KEY", ""))
-LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+load_dotenv()  # reads a .env file in the working directory, if present
+
+LLM_API_KEY = os.getenv("GROQ_API_KEY")
+LLM_MODEL = os.getenv("LLM_MODEL")
+
+# The client is created once at import time. groq.Groq() also reads
+# GROQ_API_KEY from the environment on its own, but we pass it explicitly
+# so LLM_API_KEY (the generic alias) works too, and so a missing key doesn't
+# raise on import.
+_client = Groq(api_key=LLM_API_KEY) if LLM_API_KEY else None
 
 
 def _forward_fill_headers(headers: list) -> list:
@@ -43,37 +49,39 @@ def to_markdown(table: ExtractedTable) -> str:
     return "\n".join(lines)
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    retry=lambda retry_state: isinstance(
+        retry_state.outcome.exception() if retry_state.outcome else None,
+        GroqError,
+    ),
+)
 def summarize_table(markdown: str, context_hint: str = "") -> str:
     """
-    Calls Groq's chat completion endpoint to produce a 2-4 sentence
-    natural-language summary of the table, used as the embedded text.
+    Calls Groq's chat completion endpoint (via the official SDK) to produce
+    a 2-4 sentence natural-language summary of the table, used as the
+    embedded text.
     """
-    if not LLM_API_KEY:
+    if _client is None:
         # Offline fallback so the pipeline still runs without an API key configured.
         first_line = markdown.splitlines()[0]
         return f"Table with columns: {first_line.strip('| ').replace('|', ',')}."
 
-    resp = requests.post(
-        f"{LLM_BASE_URL}/chat/completions",
-        headers={"Authorization": f"Bearer {LLM_API_KEY}"},
-        json={
-            "model": LLM_MODEL,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "Summarize the following Markdown table in 2-4 "
-                    "sentences: what it covers, key columns, and any notable "
-                    "figures. Be concise and factual.",
-                },
-                {"role": "user", "content": f"{context_hint}\n\n{markdown}"},
-            ],
-            "temperature": 0.2,
-        },
-        timeout=30,
+    completion = _client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": "Summarize the following Markdown table in 2-4 "
+                "sentences: what it covers, key columns, and any notable "
+                "figures. Be concise and factual.",
+            },
+            {"role": "user", "content": f"{context_hint}\n\n{markdown}"},
+        ],
+        temperature=0.2,
     )
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"].strip()
+    return completion.choices[0].message.content.strip()
 
 
 def standardize(table: ExtractedTable) -> dict:
